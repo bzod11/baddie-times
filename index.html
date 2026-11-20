@@ -283,11 +283,12 @@ td.r{white-space:nowrap}
 .edit-mine{margin-top:2.5rem;text-align:center}
 .edit-mine .btn{margin:.2rem .15rem}
 .claim{max-width:30rem;margin:1.2rem auto 0;text-align:left;border-top:1px solid var(--rule);padding-top:.9rem}
-.claim .btn:disabled{opacity:.4;cursor:default}
+.claim .btn:disabled,.go .btn:disabled{opacity:.4;cursor:default}
 .claim .nm{display:block;font:700 .72rem/1.3 var(--f-util);letter-spacing:.1em;text-transform:uppercase;margin:0 0 .35rem}
 .claim-row{display:flex;align-items:center;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
 .claim-row:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .claim-pre{font:600 1rem var(--f-util);color:var(--ink-2);padding:.6rem 0 .6rem .65rem;white-space:nowrap}
+.cz .claim-row input[type=text]{border:0;border-radius:0;background:transparent;width:auto;flex:1;min-width:0;padding:.6rem .65rem .6rem 0;outline:none;font:600 1rem var(--f-util);color:var(--ink)}
 .claim-row input{flex:1;min-width:0;border:0;background:transparent;font:600 1rem var(--f-util);color:var(--ink);padding:.6rem .65rem .6rem 0;outline:none}
 .claim-st{font:400 .86rem/1.4 var(--f-util);min-height:1.3rem;margin:.45rem 0 .7rem;color:var(--ink-2)}
 .claim-st.ok{color:var(--accent);font-weight:600}.claim-st.no{color:var(--series-2);font-weight:600}
@@ -677,11 +678,31 @@ svg.ic .cl{fill:var(--paper)}
     document.getElementById("dl-issue").textContent="Build your own paper";
     notice.hidden=true;prev.disabled=next.disabled=true;pick.hidden=true;
     var z=h("div","cz");z.appendChild(h("h2",null,"Make your morning paper"));
-    z.appendChild(h("p","lede","Pick your sections and the order they appear in. A fresh edition is ready every morning by about 6:00 Zurich time. Your paper is saved in this browser, and you also get your own link: bookmark it or add it to your home screen to open your paper anywhere."));
+    z.appendChild(h("p","lede","Name your paper, pick its link, then choose your sections and their order. A fresh edition is ready every morning by about 6:00 Zurich time, and your link (like baddietimes.com/slogantimes) opens it on any phone or computer."));
     z.appendChild(h("label","nm","Name your paper"));var inp=h("input");inp.type="text";inp.placeholder="The Morning Lena";inp.value=c.name||"";inp.maxLength=60;z.appendChild(inp);
     var ol=h("ol","order");
     function sync(){c.name=inp.value.trim()||"My Morning Paper";drawOrder();}
     inp.addEventListener("input",sync);
+    var editingLink=!!(SHORT&&SHORT_STATE!=="missing"),lin=null,linSt=null,linOk=false,linTouched=false,linT=null,linSeq=0,openHint=null;
+    if(!editingLink){
+      var ll=h("label","nm","Your link");ll.htmlFor="paper-link";z.insertBefore(ll,inp.nextSibling);
+      var row=h("div","claim-row");row.appendChild(h("span","claim-pre","baddietimes.com/"));
+      lin=h("input");lin.id="paper-link";lin.type="text";lin.maxLength=30;["autocomplete","autocorrect","autocapitalize","spellcheck"].forEach(function(a){lin.setAttribute(a,a==="spellcheck"?"false":"off");});
+      row.appendChild(lin);z.insertBefore(row,ll.nextSibling);
+      linSt=h("p","claim-st");linSt.setAttribute("aria-live","polite");z.insertBefore(linSt,row.nextSibling);
+      var lst=function(msg,cls){linSt.textContent=msg;linSt.className="claim-st"+(cls?" "+cls:"");};
+      var setOk=function(v){linOk=v;if(open){open.disabled=!v;}if(openHint)openHint.hidden=v;};
+      var checkLin=function(){var n=lin.value,my=++linSeq;setOk(false);
+        if(n.length<3){lst(n?"Use at least 3 letters or numbers.":"Pick a name for your link.","no");return;}
+        lst("Checking\u2026");
+        fetch(API+"/check/"+encodeURIComponent(n),{cache:"no-store"}).then(function(r){return r.json();}).then(function(x){if(my!==linSeq)return;
+          if(x.available){lst("\u2713 baddietimes.com/"+n+" is available","ok");setOk(true);}else lst("\u2717 "+(x.reason||"That link isn't available."),"no");
+        }).catch(function(){if(my===linSeq)lst("Couldn't check right now. Try again in a moment.","no");});};
+      var queue=function(){clearTimeout(linT);linT=setTimeout(checkLin,350);};
+      lin.addEventListener("input",function(){linTouched=true;var v=lin.value.toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"").replace(/-{2,}/g,"-").slice(0,30);if(v!==lin.value)lin.value=v;queue();});
+      inp.addEventListener("input",function(){if(!linTouched){lin.value=slugify(inp.value);queue();}});
+      lin.value=slugify(c.name||"");
+    }
     MENU.forEach(function(gr){var d=h("div","grp");d.appendChild(h("h3",null,gr.label));var o=h("div","opts");
       gr.items.forEach(function(it){var l=h("label","opt"),cb=h("input");cb.type="checkbox";cb.checked=!!c.keys[it[0]];
         cb.addEventListener("change",function(){if(cb.checked)c.keys[it[0]]=1;else delete c.keys[it[0]];sync();});
@@ -708,11 +729,22 @@ svg.ic .cl{fill:var(--paper)}
           function(){open.disabled=false;open.textContent="Save this paper";
             flash("Couldn't save right now. Check your connection and try again.");window.scrollTo(0,0);});
         return;}
-      if(SHORT){SHORT=null;SHORT_STATE="";}
-      lsSet(CFG_KEY,hs);try{history.replaceState(null,"","/"+hs);}catch(e){}
-      finish();});
+      if(!linOk)return;
+      var n=lin.value;open.disabled=true;open.textContent="Creating your link\u2026";
+      fetch(API+"/papers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n,cfg:hs})})
+        .then(function(r){return r.json().catch(function(){return {};}).then(function(x){return {s:r.status,x:x};});})
+        .then(function(res){
+          if(res.s===201){setLink(n);lsSet(shortKey(n),hs);lsSet(CFG_KEY,hs);SHORT=n;SHORT_STATE="ok";
+            try{history.replaceState(null,"","/"+n);}catch(e){}
+            flash("Your paper is at baddietimes.com/"+n+". Bookmark it or add it to your home screen.");finish();return;}
+          open.textContent="Open my paper";
+          if(res.s===409){linSt.textContent="\u2717 Someone just took that one. Try another.";linSt.className="claim-st no";linOk=false;open.disabled=true;if(openHint)openHint.hidden=false;lin.scrollIntoView({block:"center"});lin.focus();}
+          else{open.disabled=false;flash((res.x&&res.x.reason)||"Couldn't create your link right now. Try again.");}
+        },function(){open.disabled=false;open.textContent="Open my paper";flash("Couldn't reach the server. Check your connection and try again.");});
+      });
     go.appendChild(open);z.appendChild(go);
-    z.appendChild(h("p","cz-note","Only your section picks and paper name are saved. You can change them any time with Edit my paper at the bottom of your paper, and get a short link like baddietimes.com/yourpaper there too."));
+    if(!editingLink){openHint=h("p","cz-note","Pick an available link name at the top to open your paper.");z.appendChild(openHint);open.disabled=true;if(lin.value)checkLin();else linSt.textContent="Pick a name for your link.";}
+    z.appendChild(h("p","cz-note","Only your paper name, link and section picks are saved. You can change them any time with the Edit button at the bottom of your paper."));
     sync();editBox.hidden=true;paper.replaceChildren(z);
   }
   var editBox=document.getElementById("edit-mine"),ME=null,DBP=null;
