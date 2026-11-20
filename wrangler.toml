@@ -1,7 +1,7 @@
 # Cloudflare Worker for Baddie Times short links (baddietimes.com/<name>).
-# Deployed automatically by Cloudflare from this folder of the GitHub repo.
+# Deployed automatically by Cloudflare from this GitHub repo; code lives in api/.
 name = "baddie-links"
-main = "src/index.js"
+main = "api/src/index.js"
 compatibility_date = "2026-11-01"
 workers_dev = true
 routes = [
