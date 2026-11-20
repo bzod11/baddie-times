@@ -749,21 +749,23 @@ svg.ic .cl{fill:var(--paper)}
     fetch(API+"/papers/"+encodeURIComponent(n),{cache:"no-store"}).then(function(r){
       if(n!==SHORT)return;
       if(r.status===404){SHORT_STATE="missing";try{localStorage.removeItem(shortKey(n));}catch(e){}CFG=null;showMissing();return;}
-      if(!r.ok)throw new Error("api");
-      return r.json().then(function(x){var c=parseCfg(x&&x.cfg);if(!c)throw new Error("bad");
+      if(!r.ok)throw new Error("server said "+r.status);
+      return r.json().then(function(x){var c=parseCfg(x&&x.cfg);if(!c)throw new Error("unreadable picks: "+String(x&&x.cfg).slice(0,40));
         var changed=!CFG||cfgHash(c)!==cfgHash(CFG);SHORT_STATE="ok";CFG=c;lsSet(shortKey(n),x.cfg);
         if(myLink()===n)lsSet(CFG_KEY,x.cfg);
         if(changed)refresh();else updateMine();});
-    }).catch(function(){if(n!==SHORT)return;SHORT_STATE="error";if(!CFG)showLinkError();});
+    }).catch(function(e){if(n!==SHORT)return;SHORT_STATE="error";LINK_ERR=(e&&e.message)||String(e);if(!CFG)showLinkError();});
   }
   function plainHead(){var np=document.getElementById("np");np.textContent="The Baddie Times Customizer";np.classList.add("plain");document.getElementById("dl-issue").textContent="Build your own paper";editBox.hidden=true;}
   function showMissing(){plainHead();
     var d=h("div","empty");d.appendChild(h("h2",null,"No paper at this link"));
     d.appendChild(h("p",null,"Nobody has claimed baddietimes.com/"+SHORT+" yet. Make your own paper, then use Get a short link at the bottom of it to claim a name."));
     var b=h("a","btn","Make my paper");b.href="/?new=1";b.style.display="inline-block";b.style.marginTop="1rem";b.style.textDecoration="none";d.appendChild(b);paper.replaceChildren(d);}
+  var LINK_ERR="";
   function showLinkError(){plainHead();
     var d=h("div","empty");d.appendChild(h("h2",null,"Couldn't open this paper"));
-    d.appendChild(h("p",null,"The paper at baddietimes.com/"+SHORT+" didn't load. Check your connection and reload the page."));paper.replaceChildren(d);}
+    d.appendChild(h("p",null,"The paper at baddietimes.com/"+SHORT+" didn't load. Check your connection and reload the page."));
+    if(LINK_ERR)d.appendChild(h("p","fine","Details: "+LINK_ERR+" \u00b7 "+API));paper.replaceChildren(d);}
 
   var claimBtn=document.getElementById("claim-btn"),claimBox=document.getElementById("claim"),claimIn=document.getElementById("claim-in"),
       claimSt=document.getElementById("claim-st"),claimGo=document.getElementById("claim-go"),claimDone=document.getElementById("claim-done"),
