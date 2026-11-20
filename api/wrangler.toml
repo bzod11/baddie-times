@@ -1,0 +1,14 @@
+# Cloudflare Worker for Baddie Times short links (baddietimes.com/<name>).
+# Deployed automatically by Cloudflare from this folder of the GitHub repo.
+name = "baddie-links"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+routes = [
+  { pattern = "api.baddietimes.com", custom_domain = true }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "baddie-links"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

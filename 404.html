@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Baddie Times</title>
+<script>
+  // Short links: GitHub Pages serves this page for any path it doesn't know
+  // (e.g. /slogantimes). Hand the name to the main page, which looks it up.
+  (function () {
+    var p = location.pathname.replace(/^\/+|\/+$/g, "");
+    location.replace("/?go=" + encodeURIComponent(p) + location.hash);
+  })();
+</script>
+</head>
+<body style="font-family:Georgia,serif;background:#f0f0ea;color:#16191a;padding:2rem">
+<p>Opening your paper&hellip; If nothing happens, <a href="/">go to The Baddie Times</a>.</p>
+</body>
+</html>
