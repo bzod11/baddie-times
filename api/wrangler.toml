@@ -11,4 +11,4 @@ routes = [
 [[d1_databases]]
 binding = "DB"
 database_name = "baddie-links"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "4bebb0b6-b078-4c76-82c1-d39e22b9eb1c"
