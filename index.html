@@ -165,6 +165,10 @@ td.r{white-space:nowrap}
 .asl-steps li{counter-increment:s;position:relative;padding-left:1.7rem;font-size:.98rem;line-height:1.42}
 .asl-steps li::before{content:counter(s);position:absolute;left:0;top:.1rem;width:1.2rem;height:1.2rem;border-radius:50%;border:1px solid var(--accent);color:var(--accent);font:700 .68rem/1.15rem var(--f-util);text-align:center}
 .asl-hook{margin-top:.55rem;font-style:italic;border-left:2px solid var(--accent);padding-left:.6rem}
+.asl-recent{grid-column:1/-1;margin:0;padding-top:.5rem;border-top:1px dotted var(--rule);font:400 .72rem/1.6 var(--f-util);color:var(--ink-2);letter-spacing:.04em}
+.asl-recent b{font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-right:.45rem}
+.asl-recent a,.asl-recent span{white-space:nowrap}
+.asl-recent a{color:var(--ink);text-decoration:none;border-bottom:1px dotted var(--ink-2)}
 .asl-fine{margin-top:.45rem;font:400 .78rem/1.45 var(--f-util);color:var(--ink-2)}
 
 /* Syndicate setup */
@@ -196,6 +200,7 @@ td.r{white-space:nowrap}
 .panel{background:var(--panel);border:2px solid var(--rule-strong);padding:.5rem;max-width:46rem;margin:0 auto}
 .panel img{display:block;width:100%;height:auto}
 .toon figcaption{margin-top:.7rem;text-align:center;font:italic 400 1.12rem/1.4 var(--f-body);text-wrap:balance}
+.rate{margin:.35rem 0 0;text-align:center;font:400 .74rem/1 var(--f-util);color:var(--ink-2)}.rate[hidden]{display:none}.rate button{font:600 .7rem/1 var(--f-util);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);background:none;border:1px solid var(--rule);border-radius:999px;padding:.4rem .65rem;margin-left:.3rem;cursor:pointer;min-height:2rem}.rate button.on{color:var(--paper);background:var(--accent);border-color:var(--accent)}
 .strips{margin-top:.6rem;text-align:center;font:400 .78rem/1.5 var(--f-util);color:var(--ink-2)}
 .cols3{margin-top:2rem}
 @media (min-width:48rem){
@@ -577,6 +582,12 @@ svg.ic .cl{fill:var(--paper)}
      to the Baddie Travels calendar. Without db access (signed out, or not an editor) it opens
      a prefilled Google Calendar event instead. */
   var DB=null,CANQ=false,REQ={},addBtns=[];
+  var CANR=false,RATE={},rateRows=[];
+  function paintRate(rt){rt.hidden=!CANR;var v=RATE[rt.getAttribute("data-date")];rt.querySelectorAll("button").forEach(function(b){var on=b.getAttribute("data-v")===v;b.classList.toggle("on",on);b.setAttribute("aria-pressed",on?"true":"false");});}
+  function repaintRates(){rateRows=rateRows.filter(function(r){return r.isConnected;});rateRows.forEach(paintRate);}
+  function rateTap(rt,v){if(!DB||!CANR)return;var d=rt.getAttribute("data-date"),ref=DB.collection("meta/cartoon-ratings/items").doc(d);
+    if(RATE[d]===v){delete RATE[d];repaintRates();ref.delete().catch(function(){});return;}
+    RATE[d]=v;repaintRates();ref.set({date:d,vote:v,caption:rt.getAttribute("data-cap")||"",alt:rt.getAttribute("data-alt")||"",at:new Date().toISOString()}).catch(function(){});}
   function reqId(e){return ((e.start||e.next||"")+"_"+(e.title||"")).replace(/[^A-Za-z0-9_-]+/g,"-").slice(0,150);}
   function gcalUrl(e){
     var d=(e.start||e.next||"").replace(/-/g,""),en=e.end||e.start||e.next||"";
@@ -935,6 +946,9 @@ svg.ic .cl{fill:var(--paper)}
         im.alt=cm.alt||cm.caption||"Today's cartoon";im.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(cm.svg);
         pn.appendChild(im);fig.appendChild(pn);
         if(cm.caption)fig.appendChild(h("figcaption",null,cm.caption));
+        var rt=h("p","rate");rt.setAttribute("data-date",String(ed.date||""));rt.setAttribute("data-cap",cm.caption||"");rt.setAttribute("data-alt",cm.alt||"");
+        rt.appendChild(document.createTextNode("Funny?"));[["up","\u25B2 Yes"],["down","\u25BC Meh"]].forEach(function(x){var b=h("button",null,x[1]);b.type="button";b.setAttribute("data-v",x[0]);b.addEventListener("click",function(){rateTap(rt,x[0]);});rt.appendChild(b);});
+        fig.appendChild(rt);rateRows.push(rt);paintRate(rt);
         frag.appendChild(fig);
       }
       var strips=arr(fun.strips).filter(function(x){return x&&x.name;});
@@ -982,7 +996,13 @@ svg.ic .cl{fill:var(--paper)}
         var ar=h("div"),ol=h("ol","asl-steps");arr(as.steps).forEach(function(t){ol.appendChild(h("li",null,t));});ar.appendChild(ol);
         if(as.hook)ar.appendChild(h("p","asl-hook",as.hook));
         if(as.tip)ar.appendChild(h("p","asl-fine",as.tip));
-        ab.appendChild(ar);frag.appendChild(ab);
+        ab.appendChild(ar);
+        var rc=arr(as.recent).map(function(x){return typeof x==="string"?{sign:x}:x;}).filter(function(x){return x&&x.sign;}).slice(0,7);
+        if(rc.length){var rr=h("p","asl-recent");rr.appendChild(h("b",null,"Last "+rc.length));
+          rc.forEach(function(x,i){if(i)rr.appendChild(document.createTextNode(" \u00b7 "));
+            if(x.url&&/^https:\/\//.test(x.url)){var a=link(x.url,x.sign);a.title="Check on Lifeprint";rr.appendChild(a);}else rr.appendChild(h("span",null,x.sign));});
+          ab.appendChild(rr);}
+        frag.appendChild(ab);
       }
     }
     var cu=ed.calendar;
@@ -1164,6 +1184,9 @@ svg.ic .cl{fill:var(--paper)}
     loadRemote(db);
     var first=true,done=function(){if(first){first=false;settle();}};
     DB=db;
+    db.collection("meta/cartoon-ratings/items").onSnapshot(function(snap){
+      CANR=true;RATE={};snap.docs.forEach(function(d){var x=d.data()||{};if(x.vote)RATE[d.id]=x.vote;});repaintRates();
+    },function(){});
     db.collection("meta/calreq/items").onSnapshot(function(snap){
       CANQ=true;REQ={};snap.docs.forEach(function(d){var x=d.data()||{};REQ[d.id]=x.status==="added"?"added":"pending";});repaintAdds();
     },function(){});
