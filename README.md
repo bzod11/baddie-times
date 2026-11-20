@@ -1,2 +1,3 @@
-# baddie-times
-A premium custom newspaper
+# The Baddie Times Customizer
+
+Build-your-own daily paper. Updated every morning.
