@@ -14,6 +14,8 @@
 const ALLOWED_ORIGINS = [
   "https://baddietimes.com",
   "https://www.baddietimes.com",
+  "http://baddietimes.com",      // until HTTPS is enforced on GitHub Pages
+  "http://www.baddietimes.com",
   "https://bzod11.github.io",
 ];
 const RESERVED = new Set([
