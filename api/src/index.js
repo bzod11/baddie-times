@@ -1,13 +1,15 @@
 // Baddie Times short links API (api.baddietimes.com).
 //
-//   GET  /check/:name   -> { name, available, reason? }
-//   GET  /papers/:name  -> { name, cfg, updatedAt }            (404 if unclaimed)
-//   POST /papers        { name, cfg }            -> { name, editCode }   (409 if taken)
-//   PUT  /papers/:name  { cfg, editCode }        -> { name, updatedAt }  (403 on wrong code)
-//   DELETE /papers/:name   header X-Admin-Key    -> { deleted }          (owner cleanup)
+//   GET  /check/:name           -> { name, available, reason? }
+//   GET  /papers/:name          -> { name, cfg, updatedAt }        (404 if unclaimed)
+//   POST /papers                { name, cfg } -> { name }          (409 if taken)
+//   PUT  /papers/:name          { cfg }       -> { name, updatedAt }
+//   POST /papers/:name/rename   { to }        -> { name }          (409 if taken)
+//   DELETE /papers/:name        header X-Admin-Key -> { deleted }  (owner cleanup)
 //
-// Names are unique (PRIMARY KEY), so two people can never hold the same one,
-// even if they claim it in the same second. Edit codes are stored only as hashes.
+// Names are unique (PRIMARY KEY), so two people can never hold the same one, even if
+// they claim it in the same second. By Ben's choice there are no passwords: anyone who
+// opens a link can change that paper or rename the link.
 
 const ALLOWED_ORIGINS = [
   "https://baddietimes.com",
@@ -25,7 +27,6 @@ const RESERVED = new Set([
 ]);
 const NAME_RE = /^[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])$/;
 const CLAIMS_PER_DAY = 10;
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I/L
 
 let schemaReady = false;
 async function ensureSchema(db) {
@@ -59,14 +60,6 @@ function json(req, status, body) {
 async function sha256(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function newCode() {
-  const r = crypto.getRandomValues(new Uint8Array(8));
-  const c = [...r].map((x) => CODE_ALPHABET[x % CODE_ALPHABET.length]).join("");
-  return c.slice(0, 4) + "-" + c.slice(4);
-}
-function normCode(c) {
-  return String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 function nameProblem(name) {
   if (!NAME_RE.test(name)) return "Use 3 to 30 lowercase letters, numbers or hyphens, starting and ending with a letter or number.";
@@ -113,25 +106,37 @@ export default {
         const since = new Date(Date.now() - 864e5).toISOString();
         const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM papers WHERE ip_hash = ? AND created_at > ?").bind(ipHash, since).first();
         if (n && n.n >= CLAIMS_PER_DAY) return json(req, 429, { error: "too_many", reason: "Too many new links today. Try again tomorrow." });
-        const code = newCode();
         const res = await env.DB.prepare(
-          "INSERT INTO papers (name, cfg, code_hash, created_at, updated_at, ip_hash) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO NOTHING"
-        ).bind(name, b.cfg, await sha256(normCode(code)), now, now, ipHash).run();
+          "INSERT INTO papers (name, cfg, code_hash, created_at, updated_at, ip_hash) VALUES (?, ?, '', ?, ?, ?) ON CONFLICT(name) DO NOTHING"
+        ).bind(name, b.cfg, now, now, ipHash).run();
         if (!res.meta || res.meta.changes !== 1) return json(req, 409, { error: "taken", reason: "That link is taken." });
-        return json(req, 201, { name, editCode: code });
+        return json(req, 201, { name });
       }
 
       if (parts[0] === "papers" && parts.length === 2 && req.method === "PUT") {
         const b = await readBody(req);
         const bad = cfgProblem(b && b.cfg);
         if (bad) return json(req, 400, { error: "invalid", reason: bad });
-        const res = await env.DB.prepare("UPDATE papers SET cfg = ?, updated_at = ? WHERE name = ? AND code_hash = ?")
-          .bind(b.cfg, now, parts[1], await sha256(normCode(b.editCode))).run();
-        if (!res.meta || res.meta.changes !== 1) {
-          const exists = await env.DB.prepare("SELECT 1 FROM papers WHERE name = ?").bind(parts[1]).first();
-          return json(req, exists ? 403 : 404, { error: exists ? "wrong_code" : "not_found", reason: exists ? "That edit code doesn't match this link." : "No paper at this link." });
-        }
+        const res = await env.DB.prepare("UPDATE papers SET cfg = ?, updated_at = ? WHERE name = ?").bind(b.cfg, now, parts[1]).run();
+        if (!res.meta || res.meta.changes !== 1) return json(req, 404, { error: "not_found", reason: "No paper at this link." });
         return json(req, 200, { name: parts[1], updatedAt: now });
+      }
+
+      if (parts[0] === "papers" && parts.length === 3 && parts[2] === "rename" && req.method === "POST") {
+        const b = await readBody(req);
+        const from = parts[1], to = String((b && b.to) || "").toLowerCase();
+        if (to === from) return json(req, 200, { name: to });
+        const bad = nameProblem(to);
+        if (bad) return json(req, 400, { error: "invalid", reason: bad });
+        const ins = await env.DB.prepare(
+          "INSERT INTO papers (name, cfg, code_hash, created_at, updated_at, ip_hash) SELECT ?, cfg, code_hash, created_at, ?, ip_hash FROM papers WHERE name = ? ON CONFLICT(name) DO NOTHING"
+        ).bind(to, now, from).run();
+        if (!ins.meta || ins.meta.changes !== 1) {
+          const src = await env.DB.prepare("SELECT 1 FROM papers WHERE name = ?").bind(from).first();
+          return src ? json(req, 409, { error: "taken", reason: "That link is taken." }) : json(req, 404, { error: "not_found", reason: "No paper at this link." });
+        }
+        await env.DB.prepare("DELETE FROM papers WHERE name = ?").bind(from).run();
+        return json(req, 200, { name: to });
       }
 
       if (parts[0] === "papers" && parts.length === 2 && req.method === "DELETE") {

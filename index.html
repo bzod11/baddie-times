@@ -628,12 +628,11 @@ svg.ic .cl{fill:var(--paper)}
   /* Short links (baddietimes.com/<name>): stored by the small API below. 404.html sends
      unknown paths here as ?go=<name>; we put the clean path back in the address bar. */
   var API=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)?"http://"+location.hostname+":8787":"https://api.baddietimes.com";
-  var LINKS_KEY="baddie-links",MYLINK_KEY="baddie-mylink";
+  var MYLINK_KEY="baddie-mylink";
   function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
   function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
-  function myLinks(){try{return JSON.parse(lsGet(LINKS_KEY)||"{}")||{};}catch(e){return {};}}
-  function setLink(n,code){var m=myLinks();m[n]=code;lsSet(LINKS_KEY,JSON.stringify(m));lsSet(MYLINK_KEY,n);}
-  function myLink(){var n=lsGet(MYLINK_KEY);return n&&myLinks()[n]?n:null;}
+  function setLink(n){lsSet(MYLINK_KEY,n);}
+  function myLink(){return lsGet(MYLINK_KEY)||null;}
   function shortKey(n){return "baddie-short:"+n;}
   function slugify(s){return String(s||"").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"").slice(0,30);}
   var SHORT=null,SHORT_STATE="";
@@ -642,7 +641,7 @@ svg.ic .cl{fill:var(--paper)}
     var p="";try{p=decodeURIComponent(location.pathname);}catch(e){p=location.pathname;}
     p=p.replace(/^\/+|\/+$/g,"").toLowerCase();
     if(p&&p!=="index.html")SHORT=p;
-    else if(!location.hash){var ml=myLink();if(ml){SHORT=ml;try{history.replaceState(null,"","/"+ml);}catch(e){}}}
+    else if(!location.hash&&!/[?&]new=1/.test(location.search)){var ml=myLink();if(ml){SHORT=ml;try{history.replaceState(null,"","/"+ml);}catch(e){}}}
   })();
   var CFG=null;
   if(SHORT){CFG=parseCfg(lsGet(shortKey(SHORT)));}
@@ -698,21 +697,16 @@ svg.ic .cl{fill:var(--paper)}
       up.addEventListener("click",function(){var t=c.order[i-1];c.order[i-1]=g;c.order[i]=t;sync();});
       dn.addEventListener("click",function(){var t=c.order[i+1];c.order[i+1]=g;c.order[i]=t;sync();});
       li.appendChild(up);li.appendChild(dn);li.appendChild(h("span",null,gr.label));li.appendChild(h("em",null,picked.length?picked.join(", "):"not picked"));ol.appendChild(li);});}
-    var codeIn=null;
-    if(SHORT&&SHORT_STATE!=="missing"&&!myLinks()[SHORT]){
-      z.appendChild(h("p","cz-note","You're editing a copy of baddietimes.com/"+SHORT+". Your changes become your own paper, and you can get your own short link after. If this is your link, enter its edit code to change it instead."));
-      z.appendChild(h("label","nm","Edit code (only for your own link)"));codeIn=h("input");codeIn.type="text";codeIn.placeholder="ABCD-EFGH";codeIn.maxLength=12;codeIn.setAttribute("autocapitalize","characters");codeIn.setAttribute("autocomplete","off");z.appendChild(codeIn);}
-    var go=h("div","go"),open=h("button","btn","Open my paper");open.type="button";
+    if(SHORT&&SHORT_STATE!=="missing")z.appendChild(h("p","cz-note","You're editing baddietimes.com/"+SHORT+". Your changes show up for everyone who opens this link."));
+    var go=h("div","go"),open=h("button","btn",SHORT&&SHORT_STATE!=="missing"?"Save this paper":"Open my paper");open.type="button";
     open.addEventListener("click",function(){sync();var hs=cfgHash(c);
       var finish=function(){CFG=parseCfg(hs);saveRemote();document.getElementById("np").textContent=CFG.name;window.scrollTo(0,0);refresh();};
       if(SHORT&&SHORT_STATE!=="missing"){
-        var code=myLinks()[SHORT]||(codeIn&&codeIn.value.trim());
-        if(!code){lsSet(CFG_KEY,hs);location.href="/"+hs;return;}
-        open.disabled=true;open.textContent="Saving\u2026";
-        putLink(SHORT,hs,code).then(function(){setLink(SHORT,code.toUpperCase());lsSet(shortKey(SHORT),hs);lsSet(CFG_KEY,hs);
-            flash("Saved. baddietimes.com/"+SHORT+" now shows your changes.");finish();},
-          function(err){open.disabled=false;open.textContent="Open my paper";
-            flash(err==="wrong_code"?"That edit code doesn't match baddietimes.com/"+SHORT+". Leave it empty to make your own paper instead.":"Couldn't save to your link right now. Check your connection and try again.");window.scrollTo(0,0);});
+        var n=SHORT;open.disabled=true;open.textContent="Saving\u2026";
+        putLink(n,hs).then(function(){lsSet(shortKey(n),hs);if(myLink()===n)lsSet(CFG_KEY,hs);
+            flash("Saved. baddietimes.com/"+n+" now shows your changes.");finish();},
+          function(){open.disabled=false;open.textContent="Save this paper";
+            flash("Couldn't save right now. Check your connection and try again.");window.scrollTo(0,0);});
         return;}
       if(SHORT){SHORT=null;SHORT_STATE="";}
       lsSet(CFG_KEY,hs);try{history.replaceState(null,"","/"+hs);}catch(e){}
@@ -746,8 +740,8 @@ svg.ic .cl{fill:var(--paper)}
   }
   var flashEl=document.getElementById("flash"),flashT=null;
   function flash(msg){flashEl.textContent=msg;flashEl.hidden=false;clearTimeout(flashT);flashT=setTimeout(function(){flashEl.hidden=true;},9000);}
-  function putLink(n,hs,code){
-    return fetch(API+"/papers/"+encodeURIComponent(n),{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({cfg:hs,editCode:code})})
+  function putLink(n,hs){
+    return fetch(API+"/papers/"+encodeURIComponent(n),{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({cfg:hs})})
       .then(function(r){if(r.ok)return r.json();return r.json().catch(function(){return {};}).then(function(x){throw (x&&x.error)||"error";});});
   }
   function loadShort(){
@@ -758,7 +752,7 @@ svg.ic .cl{fill:var(--paper)}
       if(!r.ok)throw new Error("api");
       return r.json().then(function(x){var c=parseCfg(x&&x.cfg);if(!c)throw new Error("bad");
         var changed=!CFG||cfgHash(c)!==cfgHash(CFG);SHORT_STATE="ok";CFG=c;lsSet(shortKey(n),x.cfg);
-        if(myLinks()[n]&&lsGet(MYLINK_KEY)===n)lsSet(CFG_KEY,x.cfg);
+        if(myLink()===n)lsSet(CFG_KEY,x.cfg);
         if(changed)refresh();else updateMine();});
     }).catch(function(){if(n!==SHORT)return;SHORT_STATE="error";if(!CFG)showLinkError();});
   }
@@ -766,7 +760,7 @@ svg.ic .cl{fill:var(--paper)}
   function showMissing(){plainHead();
     var d=h("div","empty");d.appendChild(h("h2",null,"No paper at this link"));
     d.appendChild(h("p",null,"Nobody has claimed baddietimes.com/"+SHORT+" yet. Make your own paper, then use Get a short link at the bottom of it to claim a name."));
-    var b=h("a","btn","Make my paper");b.href="/";b.style.display="inline-block";b.style.marginTop="1rem";b.style.textDecoration="none";d.appendChild(b);paper.replaceChildren(d);}
+    var b=h("a","btn","Make my paper");b.href="/?new=1";b.style.display="inline-block";b.style.marginTop="1rem";b.style.textDecoration="none";d.appendChild(b);paper.replaceChildren(d);}
   function showLinkError(){plainHead();
     var d=h("div","empty");d.appendChild(h("h2",null,"Couldn't open this paper"));
     d.appendChild(h("p",null,"The paper at baddietimes.com/"+SHORT+" didn't load. Check your connection and reload the page."));paper.replaceChildren(d);}
@@ -785,9 +779,13 @@ svg.ic .cl{fill:var(--paper)}
       else cst("\u2717 "+(x.reason||"That link isn't available."),"no");
     }).catch(function(){if(my===claimSeq)cst("Couldn't check right now. Try again in a moment.","no");});
   }
+  var claimLabel=claimBox.querySelector(".nm");
   claimBtn.addEventListener("click",function(){
     claimDone.hidden=true;claimBox.hidden=!claimBox.hidden;
-    if(!claimBox.hidden){if(!claimIn.value)claimIn.value=slugify(CFG&&CFG.name);checkName();claimIn.focus();}
+    var renaming=!!(SHORT&&SHORT_STATE!=="missing");
+    claimLabel.textContent=renaming?"New name for this link":"Pick your short link";
+    claimGo.textContent=renaming?"Change the link":"Claim this link";
+    if(!claimBox.hidden){claimIn.value=renaming?"":slugify(CFG&&CFG.name);if(claimIn.value)checkName();else cst("");claimIn.focus();}
   });
   claimIn.addEventListener("input",function(){
     var v=claimIn.value.toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"").replace(/-{2,}/g,"-").slice(0,30);
@@ -795,42 +793,38 @@ svg.ic .cl{fill:var(--paper)}
   });
   claimIn.addEventListener("keydown",function(ev){if(ev.key==="Enter"&&!claimGo.disabled)claimGo.click();});
   claimGo.addEventListener("click",function(){
-    if(!CFG)return;var n=claimIn.value,hs=cfgHash(CFG);claimGo.disabled=true;cst("Claiming\u2026");
-    fetch(API+"/papers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n,cfg:hs})})
-      .then(function(r){return r.json().catch(function(){return {};}).then(function(x){return {s:r.status,x:x};});})
+    if(!CFG)return;var n=claimIn.value,hs=cfgHash(CFG),renaming=!!(SHORT&&SHORT_STATE!=="missing"),from=SHORT;
+    claimGo.disabled=true;cst(renaming?"Changing\u2026":"Claiming\u2026");
+    var req=renaming?fetch(API+"/papers/"+encodeURIComponent(from)+"/rename",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:n})})
+                    :fetch(API+"/papers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n,cfg:hs})});
+    req.then(function(r){return r.json().catch(function(){return {};}).then(function(x){return {s:r.status,x:x};});})
       .then(function(res){
-        if(res.s===201&&res.x.editCode){
-          setLink(n,res.x.editCode);lsSet(shortKey(n),hs);lsSet(CFG_KEY,hs);
-          SHORT=n;SHORT_STATE="ok";try{history.replaceState(null,"","/"+n);}catch(e){}
-          claimBox.hidden=true;showClaimed(n,res.x.editCode);updateMine();return;}
-        if(res.s===409)cst("\u2717 Someone just took that one. Try another.","no");
-        else cst("\u2717 "+((res.x&&res.x.reason)||"Couldn't claim it right now. Try again."),"no");
-      },function(){cst("Couldn't claim it right now. Check your connection and try again.","no");claimGo.disabled=false;});
+        if(res.s===201||(renaming&&res.s===200)){
+          if(renaming){try{localStorage.removeItem(shortKey(from));}catch(e){}if(myLink()===from)setLink(n);}
+          else{setLink(n);lsSet(CFG_KEY,hs);}
+          lsSet(shortKey(n),hs);SHORT=n;SHORT_STATE="ok";try{history.replaceState(null,"","/"+n);}catch(e){}
+          claimBox.hidden=true;showClaimed(n,renaming?from:null);updateMine();return;}
+        if(res.s===409)cst("\u2717 That link is taken. Try another.","no");
+        else cst("\u2717 "+((res.x&&res.x.reason)||"Couldn't do that right now. Try again."),"no");
+      },function(){cst("Couldn't reach the server. Check your connection and try again.","no");claimGo.disabled=false;});
   });
-  function showClaimed(n,code){
+  function showClaimed(n,from){
     claimDone.replaceChildren();claimDone.hidden=false;var box=h("div","claim-done");
-    box.appendChild(h("h3",null,"Your link is ready"));
+    box.appendChild(h("h3",null,from?"Link changed":"Your link is ready"));
     var a=h("a","lnk","baddietimes.com/"+n);a.href=PUBLIC_URL+n;box.appendChild(a);
-    box.appendChild(h("p",null,"It opens your paper on any phone or computer, no setup needed. Bookmark it or add it to your home screen."));
-    box.appendChild(h("p",null,"Your edit code:"));box.appendChild(h("span","code",code));
-    box.appendChild(h("p",null,"Save this code (a screenshot works). This browser remembers it, but you'll need it to change your paper from another device."));
+    box.appendChild(h("p",null,from?"The old link, baddietimes.com/"+from+", no longer works, so share the new one.":"It opens this paper on any phone or computer, no setup needed. Bookmark it or add it to your home screen."));
     claimDone.appendChild(box);
   }
   function updateMine(){
     if(!CFG)return;
-    var own=SHORT&&SHORT_STATE!=="missing"&&myLinks()[SHORT];
     mineNote.replaceChildren();
     if(SHORT&&SHORT_STATE!=="missing"){
-      claimBtn.hidden=true;claimBox.hidden=true;
-      if(own){editBtn.textContent="Edit my paper";copyLabel("Copy my link");
-        mineNote.appendChild(document.createTextNode("Your link: "));mineNote.appendChild(h("b",null,"baddietimes.com/"+SHORT));
-        mineNote.appendChild(document.createTextNode(". Changes you make here update it everywhere. "));
-        var sb=h("button","linkbtn","Show my edit code");sb.type="button";
-        sb.addEventListener("click",function(){sb.replaceWith(h("b",null,"Edit code: "+myLinks()[SHORT]));});mineNote.appendChild(sb);}
-      else{editBtn.textContent="Make my own version";copyLabel("Copy this link");
-        mineNote.textContent="This is the paper at baddietimes.com/"+SHORT+". Make your own version to pick your own sections.";}
+      editBtn.textContent="Edit this paper";copyLabel("Copy this link");claimBtn.textContent="Change link name";claimBtn.hidden=false;
+      mineNote.appendChild(document.createTextNode("This paper lives at "));mineNote.appendChild(h("b",null,"baddietimes.com/"+SHORT));
+      mineNote.appendChild(document.createTextNode(". Anyone with the link can edit it. "));
+      if(myLink()!==SHORT){var own=h("a","linkbtn","Start my own paper");own.href="/?new=1";mineNote.appendChild(own);}
     }else{
-      editBtn.textContent="Edit my paper";copyLabel("Copy my link");claimBtn.hidden=false;
+      editBtn.textContent="Edit my paper";copyLabel("Copy my link");claimBtn.textContent="Get a short link";claimBtn.hidden=false;
       mineNote.textContent="Bookmark this page or save your link: it always opens your paper. Or get a short link like baddietimes.com/"+(slugify(CFG.name)||"yourpaper")+".";
     }
   }
